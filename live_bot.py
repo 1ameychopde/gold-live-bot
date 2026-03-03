@@ -1,6 +1,3 @@
-from flask import Flask
-import threading
-import os
 import yfinance as yf
 import pandas as pd
 import ta
@@ -9,94 +6,99 @@ import time
 from datetime import datetime
 import pytz
 
-# =======================
+# ==============================
 # 🔐 TELEGRAM SETTINGS
-# =======================
+# ==============================
 
-TELEGRAM_TOKEN = "8795889545:AAF-N-CIRcEiIA80I1QSiQAPPTCJ2f1BZZE"
-CHAT_ID = "5305099132"
+TELEGRAM_TOKEN = "YOUR_TELEGRAM_BOT_TOKEN"
+CHAT_ID = "YOUR_CHAT_ID"
 
 def send_telegram(message):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     payload = {"chat_id": CHAT_ID, "text": message}
     requests.post(url, data=payload)
 
-# =======================
-# 📊 STRATEGY FUNCTION
-# =======================
+# ==============================
+# 📊 STRATEGY LOGIC
+# ==============================
 
 def check_signal():
-    data = yf.download(
-        "GC=F",
-        interval="5m",
-        period="1d",
-        auto_adjust=True,
-        progress=False
-    )
 
-    if data is None or data.empty:
-        return
+    try:
+        data = yf.download(
+            "GC=F",
+            interval="5m",
+            period="1d",
+            auto_adjust=True,
+            progress=False
+        )
 
-    if isinstance(data.columns, pd.MultiIndex):
-        data.columns = data.columns.get_level_values(0)
+        if data is None or data.empty:
+            print("No data fetched.")
+            return
 
-    # Convert to EST
-    if data.index.tz is None:
-        data.index = data.index.tz_localize("UTC").tz_convert("US/Eastern")
-    else:
-        data.index = data.index.tz_convert("US/Eastern")
+        if isinstance(data.columns, pd.MultiIndex):
+            data.columns = data.columns.get_level_values(0)
 
-    data["EMA50"] = data["Close"].ewm(span=50).mean()
-    data["RSI"] = ta.momentum.RSIIndicator(data["Close"], window=14).rsi()
-    data["ATR"] = ta.volatility.AverageTrueRange(
-        data["High"],
-        data["Low"],
-        data["Close"],
-        window=14
-    ).average_true_range()
+        # Convert to EST
+        if data.index.tz is None:
+            data.index = data.index.tz_localize("UTC").tz_convert("US/Eastern")
+        else:
+            data.index = data.index.tz_convert("US/Eastern")
 
-    last = data.iloc[-1]
-    prev = data.iloc[-2]
+        data["EMA50"] = data["Close"].ewm(span=50).mean()
+        data["RSI"] = ta.momentum.RSIIndicator(data["Close"], window=14).rsi()
+        data["ATR"] = ta.volatility.AverageTrueRange(
+            data["High"],
+            data["Low"],
+            data["Close"],
+            window=14
+        ).average_true_range()
 
-    current_time = data.index[-1].time()
+        last = data.iloc[-1]
+        prev = data.iloc[-2]
 
-    # Session filter (7–13 EST)
-    if not (7 <= current_time.hour < 13):
-        return
+        current_time = data.index[-1].time()
 
-    price = last["Close"]
-    ema = last["EMA50"]
-    rsi = last["RSI"]
-    atr = last["ATR"]
+        # ✅ SESSION FILTER (7–13 EST)
+        if not (7 <= current_time.hour < 13):
+            print("Outside session.")
+            return
 
-    ema_slope = last["EMA50"] - data["EMA50"].iloc[-5]
-    pullback = abs(price - ema) / ema < 0.002
+        price = last["Close"]
+        ema = last["EMA50"]
+        rsi = last["RSI"]
+        atr = last["ATR"]
 
-    range_size = last["High"] - last["Low"]
-    body_size = abs(last["Close"] - last["Open"])
+        ema_slope = last["EMA50"] - data["EMA50"].iloc[-5]
+        pullback = abs(price - ema) / ema < 0.002
 
-    if range_size == 0 or atr == 0:
-        return
+        range_size = last["High"] - last["Low"]
+        body_size = abs(last["Close"] - last["Open"])
 
-    strong_bull = body_size > range_size * 0.65 and last["Close"] > last["Open"]
-    strong_bear = body_size > range_size * 0.65 and last["Close"] < last["Open"]
+        if range_size == 0 or atr == 0:
+            print("Invalid candle.")
+            return
 
-    rsi_up = last["RSI"] > prev["RSI"]
-    rsi_down = last["RSI"] < prev["RSI"]
+        strong_bull = body_size > range_size * 0.65 and last["Close"] > last["Open"]
+        strong_bear = body_size > range_size * 0.65 and last["Close"] < last["Open"]
 
-    # ================= BULLISH =================
-    if (
-        price > ema
-        and rsi > 55
-        and ema_slope > 0
-        and pullback
-        and strong_bull
-        and rsi_up
-    ):
-        stop = price - atr
-        target = price + (2 * atr)
+        rsi_up = last["RSI"] > prev["RSI"]
+        rsi_down = last["RSI"] < prev["RSI"]
 
-        message = f"""
+        # ================= BULLISH =================
+        if (
+            price > ema
+            and rsi > 55
+            and ema_slope > 0
+            and pullback
+            and strong_bull
+            and rsi_up
+        ):
+            stop = price - atr
+            target = price + (2 * atr)
+
+            message = f"""
 🟢 GOLD BUY SIGNAL
 
 Entry: {round(price,2)}
@@ -105,21 +107,22 @@ Target: {round(target,2)}
 RR: 1:2
 Time: {datetime.now()}
 """
-        send_telegram(message)
+            print("BUY signal sent.")
+            send_telegram(message)
 
-    # ================= BEARISH =================
-    elif (
-        price < ema
-        and rsi < 45
-        and ema_slope < 0
-        and pullback
-        and strong_bear
-        and rsi_down
-    ):
-        stop = price + atr
-        target = price - (2 * atr)
+        # ================= BEARISH =================
+        elif (
+            price < ema
+            and rsi < 45
+            and ema_slope < 0
+            and pullback
+            and strong_bear
+            and rsi_down
+        ):
+            stop = price + atr
+            target = price - (2 * atr)
 
-        message = f"""
+            message = f"""
 🔴 GOLD SELL SIGNAL
 
 Entry: {round(price,2)}
@@ -128,60 +131,22 @@ Target: {round(target,2)}
 RR: 1:2
 Time: {datetime.now()}
 """
-        send_telegram(message)
+            print("SELL signal sent.")
+            send_telegram(message)
+
+        else:
+            print("No setup.")
+
+    except Exception as e:
+        print("Error inside check_signal:", e)
 
 
-# =======================
-# 🔄 LOOP EVERY 5 MIN
-# =======================
+# ==============================
+# 🔄 MAIN LOOP
+# ==============================
 
 print("Gold Live Bot Started...")
 
-# =======================
-# 🔄 BOT LOOP FUNCTION
-# =======================
-
-def run_bot():
-    print("Gold Live Bot Started...")
-    while True:
-        try:
-            check_signal()
-            time.sleep(330)  # 5 minutes
-        except Exception as e:
-            print("Error:", e)
-            time.sleep(60)
-
-# =======================
-# 🌐 FLASK SERVER (Required for Render)
-# =======================
-
-app = Flask(__name__)
-
-@app.route("/")
-def home():
-    return "Gold Bot Running"
-
-app = Flask(__name__)
-
-@app.route("/")
-def home():
-    return "Gold Bot Running"
-
-def start_bot():
-    print("Gold Live Bot Started...")
-    while True:
-        try:
-            print("Checking market...")
-            check_signal()
-            time.sleep(330)
-        except Exception as e:
-            print("Bot Error:", e)
-            time.sleep(60)
-
-if __name__ == "__main__":
-    # Start bot in daemon thread
-    bot_thread = threading.Thread(target=start_bot, daemon=True)
-    bot_thread.start()
-
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port)
+while True:
+    check_signal()
+    time.sleep(330)  # 5 min 30 sec
