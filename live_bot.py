@@ -146,7 +146,7 @@ def run_bot():
     while True:
         try:
             check_signal()
-            time.sleep(300)  # 5 minutes
+            time.sleep(330)  # 5 minutes
         except Exception as e:
             print("Error:", e)
             time.sleep(60)
