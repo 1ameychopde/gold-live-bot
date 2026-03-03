@@ -26,7 +26,7 @@ def check_signal():
     data = yf.download(
         "GC=F",
         interval="5m",
-        period="5d",
+        period="1d",
         auto_adjust=True,
         progress=False
     )
