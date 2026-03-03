@@ -61,8 +61,8 @@ def check_signal():
     current_time = data.index[-1].time()
 
     # Session filter (7–13 EST)
-   # if not (7 <= current_time.hour < 13):
-   #     return
+    if not (7 <= current_time.hour < 13):
+        return
 
     price = last["Close"]
     ema = last["EMA50"]
