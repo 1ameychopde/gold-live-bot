@@ -161,11 +161,27 @@ app = Flask(__name__)
 def home():
     return "Gold Bot Running"
 
+app = Flask(__name__)
+
+@app.route("/")
+def home():
+    return "Gold Bot Running"
+
+def start_bot():
+    print("Gold Live Bot Started...")
+    while True:
+        try:
+            print("Checking market...")
+            check_signal()
+            time.sleep(330)
+        except Exception as e:
+            print("Bot Error:", e)
+            time.sleep(60)
+
 if __name__ == "__main__":
-    # Run bot in separate thread
-    bot_thread = threading.Thread(target=run_bot)
+    # Start bot in daemon thread
+    bot_thread = threading.Thread(target=start_bot, daemon=True)
     bot_thread.start()
 
-    # Start web server
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
