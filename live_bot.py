@@ -1,3 +1,6 @@
+from flask import Flask
+import threading
+import os
 import yfinance as yf
 import pandas as pd
 import ta
@@ -134,10 +137,35 @@ Time: {datetime.now()}
 
 print("Gold Live Bot Started...")
 
-while True:
-    try:
-        check_signal()
-        time.sleep(300)  # 5 minutes
-    except Exception as e:
-        print("Error:", e)
-        time.sleep(60)
+# =======================
+# 🔄 BOT LOOP FUNCTION
+# =======================
+
+def run_bot():
+    print("Gold Live Bot Started...")
+    while True:
+        try:
+            check_signal()
+            time.sleep(300)  # 5 minutes
+        except Exception as e:
+            print("Error:", e)
+            time.sleep(60)
+
+# =======================
+# 🌐 FLASK SERVER (Required for Render)
+# =======================
+
+app = Flask(__name__)
+
+@app.route("/")
+def home():
+    return "Gold Bot Running"
+
+if __name__ == "__main__":
+    # Run bot in separate thread
+    bot_thread = threading.Thread(target=run_bot)
+    bot_thread.start()
+
+    # Start web server
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
