@@ -70,6 +70,8 @@ def check_signal():
         rsi = last["RSI"]
         atr = last["ATR"]
 
+        print("Price:", price, "EMA:", ema, "RSI:", rsi)
+
         ema_slope = last["EMA50"] - data["EMA50"].iloc[-5]
         pullback = abs(price - ema) / ema < 0.002
 
