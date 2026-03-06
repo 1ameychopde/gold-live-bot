@@ -7,11 +7,11 @@ from datetime import datetime
 import pytz
 
 # ==============================
-# 🔐 TELEGRAM SETTINGS
+# TELEGRAM SETTINGS
 # ==============================
 
-TELEGRAM_TOKEN = "8795889545:AAF-N-CIRcEiIA80I1QSiQAPPTCJ2f1BZZE"
-CHAT_ID = "5305099132"
+TELEGRAM_TOKEN = "YOUR_TELEGRAM_BOT_TOKEN"
+CHAT_ID = "YOUR_CHAT_ID"
 
 def send_telegram(message):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
@@ -19,12 +19,12 @@ def send_telegram(message):
     requests.post(url, data=payload)
 
 # ==============================
-# 📊 STRATEGY LOGIC
+# STRATEGY LOGIC
 # ==============================
 
 def check_signal():
-
     try:
+
         data = yf.download(
             "GC=F",
             interval="5m",
@@ -46,6 +46,7 @@ def check_signal():
         else:
             data.index = data.index.tz_convert("US/Eastern")
 
+        # Indicators
         data["EMA50"] = data["Close"].ewm(span=50).mean()
         data["RSI"] = ta.momentum.RSIIndicator(data["Close"], window=14).rsi()
         data["ATR"] = ta.volatility.AverageTrueRange(
@@ -58,22 +59,28 @@ def check_signal():
         last = data.iloc[-1]
         prev = data.iloc[-2]
 
-        current_time = data.index[-1].time()
-
-        # ✅ SESSION FILTER (7–13 EST)
-        if not (7 <= current_time.hour < 13):
-            print("Outside session.")
-            return
-
         price = last["Close"]
         ema = last["EMA50"]
         rsi = last["RSI"]
         atr = last["ATR"]
 
-        print("Price:", price, "EMA:", ema, "RSI:", rsi)
+        # ===== DEBUG OUTPUT =====
+        print("Price:", round(price,2),
+              "EMA:", round(ema,2),
+              "RSI:", round(rsi,2),
+              "ATR:", round(atr,2))
+
+        current_time = data.index[-1].time()
+
+        # SESSION FILTER
+        if not (7 <= current_time.hour < 13):
+            print("Outside session.")
+            return
 
         ema_slope = last["EMA50"] - data["EMA50"].iloc[-5]
-        pullback = abs(price - ema) / ema < 0.002
+
+        # Pullback condition (slightly relaxed)
+        pullback = abs(price - ema) / ema < 0.005
 
         range_size = last["High"] - last["Low"]
         body_size = abs(last["Close"] - last["Open"])
@@ -82,8 +89,8 @@ def check_signal():
             print("Invalid candle.")
             return
 
-        strong_bull = body_size > range_size * 0.65 and last["Close"] > last["Open"]
-        strong_bear = body_size > range_size * 0.65 and last["Close"] < last["Open"]
+        strong_bull = body_size > range_size * 0.5 and last["Close"] > last["Open"]
+        strong_bear = body_size > range_size * 0.5 and last["Close"] < last["Open"]
 
         rsi_up = last["RSI"] > prev["RSI"]
         rsi_down = last["RSI"] < prev["RSI"]
@@ -97,6 +104,7 @@ def check_signal():
             and strong_bull
             and rsi_up
         ):
+
             stop = price - atr
             target = price + (2 * atr)
 
@@ -109,6 +117,7 @@ Target: {round(target,2)}
 RR: 1:2
 Time: {datetime.now()}
 """
+
             print("BUY signal sent.")
             send_telegram(message)
 
@@ -121,6 +130,7 @@ Time: {datetime.now()}
             and strong_bear
             and rsi_down
         ):
+
             stop = price + atr
             target = price - (2 * atr)
 
@@ -133,6 +143,7 @@ Target: {round(target,2)}
 RR: 1:2
 Time: {datetime.now()}
 """
+
             print("SELL signal sent.")
             send_telegram(message)
 
@@ -140,15 +151,14 @@ Time: {datetime.now()}
             print("No setup.")
 
     except Exception as e:
-        print("Error inside check_signal:", e)
-
+        print("Error:", e)
 
 # ==============================
-# 🔄 MAIN LOOP
+# MAIN LOOP
 # ==============================
 
 print("Gold Live Bot Started...")
 
 while True:
     check_signal()
-    time.sleep(330)  # 5 min 30 sec
+    time.sleep(330)
