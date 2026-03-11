@@ -157,6 +157,7 @@ Time: {datetime.now()}
 # ==========================
 
 print("Gold Live Bot Started")
+send_telegram("Bot restarted successfully")
 
 while True:
 
