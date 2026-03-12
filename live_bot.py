@@ -26,47 +26,66 @@ def send_telegram(message):
 
 
 # ==========================
-# GLOBAL MEMORY
+# MARKETS TO SCAN
 # ==========================
 
-last_signal_candle = None
+markets = {
+
+    "GC=F": {
+        "name": "GOLD",
+        "session": (6, 15)
+    },
+
+    "EURUSD=X": {
+        "name": "EURUSD",
+        "session": (2, 10)
+    },
+
+    "USDJPY=X": {
+        "name": "USDJPY",
+        "session": (19, 3)
+    },
+
+    "GBPUSD=X": {
+        "name": "GBPUSD",
+        "session": (2, 10)
+    }
+}
+
+
+last_signal_candle = {}
 
 
 # ==========================
-# SIGNAL LOGIC
+# SIGNAL FUNCTION
 # ==========================
 
-def check_signal():
+def check_market(symbol, info):
 
     global last_signal_candle
 
     try:
 
         data = yf.download(
-            "GC=F",
+            symbol,
             interval="5m",
             period="1d",
             progress=False
         )
 
         if data.empty:
-            print("No data")
+            print(symbol, "No data")
             return
 
-        # Fix columns
         if isinstance(data.columns, pd.MultiIndex):
             data.columns = data.columns.get_level_values(0)
 
-        # Convert timezone to EST
         if data.index.tz is None:
             data.index = data.index.tz_localize("UTC").tz_convert("US/Eastern")
         else:
             data.index = data.index.tz_convert("US/Eastern")
 
-        # ==========================
-        # INDICATORS
-        # ==========================
-
+        # indicators
         data["EMA50"] = data["Close"].ewm(span=50).mean()
 
         data["RSI"] = ta.momentum.RSIIndicator(
@@ -80,7 +99,6 @@ def check_signal():
             window=14
         ).average_true_range()
 
-        # Use CLOSED candles only
         last = data.iloc[-2]
         prev = data.iloc[-3]
 
@@ -92,59 +110,57 @@ def check_signal():
         atr = last["ATR"]
 
         print(
+            info["name"],
             "Price:", round(price,2),
             "EMA:", round(ema,2),
-            "RSI:", round(rsi,2),
-            "ATR:", round(atr,2)
+            "RSI:", round(rsi,2)
         )
 
         # ==========================
-        # SESSION FILTER
+        # SESSION CHECK
         # ==========================
 
-        current_time = candle_time.time()
+        hour = candle_time.hour
+        start, end = info["session"]
 
-        if not (6 <= current_time.hour < 15):
-            print("Outside session")
-            return
+        if start < end:
+            if not (start <= hour < end):
+                return
+        else:
+            if not (hour >= start or hour < end):
+                return
 
         # ==========================
-        # TREND CONDITIONS
+        # TREND
         # ==========================
 
         ema_slope = last["EMA50"] - data["EMA50"].iloc[-6]
 
-        bullish_trend = price > ema and ema_slope > 0
-        bearish_trend = price < ema and ema_slope < 0
-
-        # ==========================
-        # PULLBACK CONDITION
-        # ==========================
+        bullish = price > ema and ema_slope > 0
+        bearish = price < ema and ema_slope < 0
 
         pullback = abs(price - ema) / ema < 0.01
 
         rsi_up = last["RSI"] > prev["RSI"]
         rsi_down = last["RSI"] < prev["RSI"]
 
-        # ==========================
-        # PREVENT DUPLICATE SIGNALS
-        # ==========================
+        # prevent duplicate signals
+        if symbol in last_signal_candle:
 
-        if candle_time == last_signal_candle:
-            print("Signal already sent for this candle")
-            return
+            if last_signal_candle[symbol] == candle_time:
+                return
 
         # ==========================
         # BUY SIGNAL
         # ==========================
 
-        if bullish_trend and rsi > 52 and pullback and rsi_up:
+        if bullish and rsi > 52 and pullback and rsi_up:
 
             stop = price - atr
             target = price + (2 * atr)
 
             message = f"""
-🟢 GOLD BUY SIGNAL
+🟢 {info['name']} BUY SIGNAL
 
 Entry: {round(price,2)}
 Stop: {round(stop,2)}
@@ -153,23 +169,21 @@ RR: 1:2
 Time: {datetime.now(pytz.timezone("Asia/Kolkata"))}
 """
 
-            print("BUY SIGNAL")
-
             send_telegram(message)
 
-            last_signal_candle = candle_time
+            last_signal_candle[symbol] = candle_time
 
         # ==========================
         # SELL SIGNAL
         # ==========================
 
-        elif bearish_trend and rsi < 48 and pullback and rsi_down:
+        elif bearish and rsi < 48 and pullback and rsi_down:
 
             stop = price + atr
             target = price - (2 * atr)
 
             message = f"""
-🔴 GOLD SELL SIGNAL
+🔴 {info['name']} SELL SIGNAL
 
 Entry: {round(price,2)}
 Stop: {round(stop,2)}
@@ -178,29 +192,25 @@ RR: 1:2
 Time: {datetime.now(pytz.timezone("Asia/Kolkata"))}
 """
 
-            print("SELL SIGNAL")
-
             send_telegram(message)
 
-            last_signal_candle = candle_time
-
-        else:
-
-            print("No setup")
+            last_signal_candle[symbol] = candle_time
 
     except Exception as e:
 
-        print("Error:", e)
+        print(symbol, "error:", e)
 
 
 # ==========================
-# BOT LOOP
+# MAIN LOOP
 # ==========================
 
-print("Gold Live Bot Started")
+print("Multi-Market Trading Bot Started")
 
 while True:
 
-    check_signal()
+    for symbol, info in markets.items():
+
+        check_market(symbol, info)
 
     time.sleep(300)
